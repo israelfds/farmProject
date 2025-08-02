@@ -1,165 +1,125 @@
-.PHONY: help install dev build test test-watch test-e2e lint format clean docker-build docker-run docker-stop seed migrate migrate-revert
+# Farm Management System - Docker Compose Commands
+
+.PHONY: help build up down dev prod logs clean
 
 # Default target
 help:
+	@echo "Farm Management System - Docker Compose Commands"
+	@echo ""
 	@echo "Available commands:"
-	@echo "  install      - Install dependencies"
-	@echo "  dev          - Start development server"
-	@echo "  build        - Build for production"
-	@echo "  test         - Run tests"
-	@echo "  test-watch   - Run tests in watch mode"
-	@echo "  test-e2e     - Run end-to-end tests"
-	@echo "  lint         - Run linter"
-	@echo "  format       - Format code"
-	@echo "  clean        - Clean build artifacts"
-	@echo "  docker-build - Build Docker image"
-	@echo "  docker-run   - Run with Docker Compose"
-	@echo "  docker-stop  - Stop Docker containers"
-	@echo "  seed         - Seed database with sample data"
-	@echo "  migrate      - Run database migrations"
-	@echo "  migrate-revert - Revert last migration"
-	@echo "  setup        - Setup development environment"
-	@echo "  deploy-prod  - Deploy to production"
-	@echo "  deploy-nginx - Deploy with Nginx"
-	@echo "  logs         - Show logs"
-	@echo "  backup       - Backup database"
-	@echo "  restore      - Restore database"
-	@echo "  health       - Health check"
-	@echo "  docs         - Open API documentation"
-	@echo "  pgadmin      - Open pgAdmin"
+	@echo "  make build     - Build all Docker images"
+	@echo "  make up        - Start production environment with database"
+	@echo "  make up-no-db  - Start production environment without database"
+	@echo "  make dev       - Start development environment with database"
+	@echo "  make dev-no-db - Start development environment without database"
+	@echo "  make down      - Stop all containers"
+	@echo "  make logs      - Show logs from all containers"
+	@echo "  make clean     - Remove all containers, volumes, and images"
+	@echo ""
+	@echo "Database commands:"
+	@echo "  make db-migrate    - Run database migrations"
+	@echo "  make db-seed       - Seed database with test data"
+	@echo "  make db-generate   - Generate new migration"
+	@echo "  make db-revert     - Revert last migration"
+	@echo ""
+	@echo "Test commands:"
+	@echo "  make test          - Run unit tests"
+	@echo "  make test-e2e      - Run end-to-end tests"
+	@echo "  make test-watch    - Run tests in watch mode"
+	@echo ""
+	@echo "Environment variables can be set in docker.env file or exported:"
+	@echo "  DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_DATABASE"
+	@echo "  JWT_SECRET, JWT_EXPIRES_IN"
+	@echo "  PGADMIN_EMAIL, PGADMIN_PASSWORD"
 
-# Install dependencies
-install:
-	npm install
-
-# Start development server
-dev:
-	npm run start:dev
-
-# Build for production
+# Build all images
 build:
-	npm run build
+	docker-compose build
+	docker-compose -f docker-compose.dev.yml build
 
-# Run tests
-test:
-	npm run test
+# Production with database
+up:
+	docker-compose --profile with-db up -d
 
-# Run tests in watch mode
-test-watch:
-	npm run test:watch
-
-# Run end-to-end tests
-test-e2e:
-	npm run test:e2e
-
-# Run linter
-lint:
-	npm run lint
-
-# Format code
-format:
-	npm run format
-
-# Clean build artifacts
-clean:
-	rm -rf dist
-	rm -rf node_modules
-	rm -rf coverage
-
-# Build Docker image
-docker-build:
-	docker build -t farm-producers-api .
-
-# Run with Docker Compose (development)
-docker-run:
+# Production without database (connect to external DB)
+up-no-db:
 	docker-compose up -d
 
-# Stop Docker containers
-docker-stop:
+# Development with database
+dev:
+	docker-compose -f docker-compose.dev.yml --profile with-db up -d
+
+# Development without database (connect to external DB)
+dev-no-db:
+	docker-compose -f docker-compose.dev.yml up -d
+
+# Stop all containers
+down:
 	docker-compose down
-
-# Seed database
-seed:
-	npm run seed
-
-# Run migrations
-migrate:
-	npm run migration:run
-
-# Revert last migration
-migrate-revert:
-	npm run migration:revert
-
-# Setup development environment
-setup: install
-	cp env.example .env
-	docker-compose up -d postgres
-	@echo "Waiting for database to be ready..."
-	@sleep 10
-	npm run migration:run
-	npm run seed
-	@echo "Development environment setup complete!"
-
-# Production deployment
-deploy-prod:
-	docker-compose -f docker-compose.prod.yml up -d
-
-# Production deployment with nginx
-deploy-nginx:
-	docker-compose -f docker-compose.nginx.yml up -d
+	docker-compose -f docker-compose.dev.yml down
 
 # Show logs
 logs:
 	docker-compose logs -f
 
-# Show logs for specific service
-logs-app:
-	docker-compose logs -f app
+# Clean everything
+clean:
+	docker-compose down -v --rmi all
+	docker-compose -f docker-compose.dev.yml down -v --rmi all
+	docker system prune -f
 
-logs-db:
-	docker-compose logs -f postgres
+# Setup environment file
+setup:
+	@if [ ! -f docker.env ]; then \
+		echo "Creating docker.env from docker.env.example..."; \
+		cp docker.env.example docker.env; \
+		echo "Please edit docker.env with your configuration"; \
+	else \
+		echo "docker.env already exists"; \
+	fi
 
-# Database backup
-backup:
-	docker-compose exec postgres pg_dump -U postgres farm_producers > backup_$(shell date +%Y%m%d_%H%M%S).sql
+# Database operations
+db-migrate:
+	docker-compose exec backend npm run migration:run
 
-# Database restore
-restore:
-	@read -p "Enter backup file name: " backup_file; \
-	docker-compose exec -T postgres psql -U postgres farm_producers < $$backup_file
+db-seed:
+	docker-compose exec backend npm run seed
+
+db-generate:
+	@read -p "Enter migration name: " name; \
+	docker-compose exec backend npm run migration:generate -- src/database/migrations/$$name
+
+db-revert:
+	docker-compose exec backend npm run migration:revert
+
+# Test commands
+test:
+	docker-compose exec backend npm test
+
+test-e2e:
+	docker-compose exec backend npm run test:e2e
+
+test-watch:
+	docker-compose exec backend npm run test:watch
 
 # Health check
 health:
-	curl -f http://localhost:3000/api-docs || echo "Service is not healthy"
+	@echo "Checking services health..."
+	@curl -f http://localhost:3000/health || echo "Frontend: ❌"
+	@curl -f http://localhost:3001/health || echo "Backend: ❌"
+	@echo "Health check completed"
 
-# Open API documentation
-docs:
-	open http://localhost:3000/api-docs
-
-# Open pgAdmin
-pgadmin:
-	open http://localhost:5050
-
-# Production logs
-logs-prod:
-	docker-compose -f docker-compose.prod.yml logs -f
-
-# Production logs with nginx
-logs-nginx:
-	docker-compose -f docker-compose.nginx.yml logs -f
-
-# Stop production
-stop-prod:
-	docker-compose -f docker-compose.prod.yml down
-
-# Stop production with nginx
-stop-nginx:
-	docker-compose -f docker-compose.nginx.yml down
-
-# Rebuild and restart production
-rebuild-prod:
-	docker-compose -f docker-compose.prod.yml up -d --build
-
-# Rebuild and restart production with nginx
-rebuild-nginx:
-	docker-compose -f docker-compose.nginx.yml up -d --build 
+# Quick setup for development
+dev-setup:
+	@echo "Setting up development environment..."
+	@make setup
+	@make build
+	@make dev
+	@echo "Waiting for services to start..."
+	@sleep 30
+	@make db-migrate
+	@make db-seed
+	@echo "Development environment ready!"
+	@echo "Frontend: http://localhost:3000"
+	@echo "Backend: http://localhost:3001"
+	@echo "PgAdmin: http://localhost:5050" 
