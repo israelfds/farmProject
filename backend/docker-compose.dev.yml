@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: farm_producers_api_dev
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=postgres
+      - DB_DATABASE=farm_producers
+      - PORT=3001
+    ports:
+      - "3001:3001"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - farm_network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: farm_producers_db_dev
+    environment:
+      POSTGRES_DB: farm_producers
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    networks:
+      - farm_network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: farm_producers_pgadmin_dev
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@farm.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - farm_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data_dev:
+
+networks:
+  farm_network:
+    driver: bridge 
